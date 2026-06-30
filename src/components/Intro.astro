@@ -1,0 +1,83 @@
+---
+import { getEntry } from "astro:content";
+const profileEntry = await getEntry("profile", "profile");
+const profile = profileEntry!.data;
+---
+
+<section class="intro" id="intro">
+  <div class="container intro-inner">
+    <p class="intro-status mono fade-in">[ available for work ]</p>
+    <h1 class="intro-name display fade-in">
+      {profile.name.split(" ")[0]}<br />
+      <span class="intro-name-last">{profile.name.split(" ").slice(1).join(" ")}</span>
+    </h1>
+    <p class="intro-tagline fade-in">{profile.tagline}</p>
+    <div class="intro-meta fade-in">
+      <span class="mono">{profile.location}</span>
+      <span class="mono intro-scroll">scroll ↓</span>
+    </div>
+  </div>
+</section>
+
+<style>
+  .intro {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    position: relative;
+    z-index: 2;
+  }
+
+  .intro-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 1.5rem;
+  }
+
+  .intro-status {
+    color: var(--text-mid);
+  }
+
+  .intro-name {
+    font-size: clamp(3.5rem, 15vw, 13rem);
+    font-weight: 100;
+    letter-spacing: -0.06em;
+    line-height: 0.85;
+  }
+
+  .intro-name-last {
+    color: var(--text-dim);
+  }
+
+  .intro-tagline {
+    font-size: clamp(1rem, 2vw, 1.4rem);
+    font-weight: 300;
+    color: var(--text-mid);
+    max-width: 520px;
+    line-height: 1.4;
+    letter-spacing: -0.01em;
+    margin-top: 1rem;
+  }
+
+  .intro-meta {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 2rem;
+    margin-top: 2.5rem;
+    color: var(--text-dim);
+  }
+
+  .intro-scroll {
+    color: var(--text);
+  }
+
+  @media (max-width: 640px) {
+    .intro-meta {
+      flex-direction: column;
+      gap: 1rem;
+    }
+  }
+</style>

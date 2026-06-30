@@ -1,0 +1,528 @@
+---
+---
+
+<canvas class="webgl-bg" id="webgl-bg"></canvas>
+
+<style>
+  .webgl-bg {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+</style>
+
+<script>
+  const canvas = document.getElementById("webgl-bg") as HTMLCanvasElement | null;
+
+  if (canvas) {
+    // Try WebGL2 for GPGPU; fall back to plain WebGL1.
+    const gl2 = canvas.getContext("webgl2", { alpha: false, antialias: true, premultipliedAlpha: false }) as WebGL2RenderingContext | null;
+    const gl1 = gl2 ? null : canvas.getContext("webgl", { alpha: false, antialias: true, premultipliedAlpha: false }) as WebGLRenderingContext | null;
+    const gl: WebGLRenderingContext = (gl2 || gl1)!;
+    const isWebGL2 = !!gl2;
+
+    if (!gl) {
+      canvas.style.background = document.documentElement.dataset.theme === "light" ? "#f6f6f4" : "#000000";
+    } else {
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      // ---- Fluid capability gate (WebGL2 + EXT_color_buffer_float, non-touch) ----
+      let fluidEnabled = false;
+      if (isWebGL2 && (gl as WebGL2RenderingContext).getExtension("EXT_color_buffer_float")) {
+        fluidEnabled = true;
+      }
+      if (window.matchMedia("(hover: none)").matches) fluidEnabled = false;
+      if (reduceMotion) fluidEnabled = false;
+
+      // ============================================================
+      // Shader sources
+      // ============================================================
+      const vertSrc100 = `
+        attribute vec2 a_position;
+        varying vec2 v_uv;
+        void main() {
+          v_uv = a_position * 0.5 + 0.5;
+          gl_Position = vec4(a_position, 0.0, 1.0);
+        }
+      `;
+
+      const vertSrc300 = `#version 300 es
+        in vec2 a_position;
+        out vec2 v_uv;
+        void main() {
+          v_uv = a_position * 0.5 + 0.5;
+          gl_Position = vec4(a_position, 0.0, 1.0);
+        }
+      `;
+
+      // Used when fluid is OFF (WebGL1 OR WebGL2-without-ext). GLSL ES 1.00 style.
+      const patternFragSrc100 = `
+        precision highp float;
+        varying vec2 v_uv;
+        uniform vec2 u_resolution;
+        uniform float u_time;
+        uniform float u_scroll;
+        uniform float u_lightMode;
+
+        #define DOT_SCALE 0.120
+        #define PLUS_LEN 0.18
+        #define PLUS_WIDTH 0.04
+        #define SCROLL_PARALLAX 0.45
+        #define SMOOTH_SCALE 4.0
+
+        float hash21(vec2 p) {
+          p = fract(p * vec2(123.34, 456.21));
+          p += dot(p, p + 45.32);
+          return fract(p.x * p.y);
+        }
+        float valueNoise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          float a = hash21(i);
+          float b = hash21(i + vec2(1.0, 0.0));
+          float c = hash21(i + vec2(0.0, 1.0));
+          float d = hash21(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+        }
+
+        void main() {
+          vec2 uv = v_uv;
+          float aspect = u_resolution.x / u_resolution.y;
+
+          vec2 gridUv = uv;
+          gridUv.x *= aspect;
+          gridUv.y -= u_scroll * SCROLL_PARALLAX;
+          gridUv *= DOT_SCALE * u_resolution.y;
+
+          vec2 cellId = floor(gridUv);
+          vec2 cellFrac = fract(gridUv) - 0.5;
+
+          vec2 jitter = vec2(hash21(cellId), hash21(cellId + 17.13)) - 0.5;
+          jitter *= 0.55;
+          cellFrac -= jitter;
+
+          float dx = abs(cellFrac.x);
+          float dy = abs(cellFrac.y);
+          float barH = smoothstep(PLUS_LEN, PLUS_LEN - 0.02, dx) *
+                      smoothstep(PLUS_WIDTH, PLUS_WIDTH - 0.01, dy);
+          float barV = smoothstep(PLUS_LEN, PLUS_LEN - 0.02, dy) *
+                      smoothstep(PLUS_WIDTH, PLUS_WIDTH - 0.01, dx);
+          float dashMask = max(barH, barV);
+
+          float b = valueNoise(cellId / SMOOTH_SCALE);
+          float dotBrightness = pow(b, 0.55);
+          float intensity = dashMask * dotBrightness * 0.132;
+
+          vec3 col = mix(vec3(intensity), vec3(1.0 - intensity), u_lightMode);
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `;
+
+      // Used when fluid is ON (WebGL2 + ext). GLSL ES 3.00 style — samples fluid field.
+      const patternFragSrc300 = `#version 300 es
+        precision highp float;
+        in vec2 v_uv;
+        out vec4 fragColor;
+        uniform vec2 u_resolution;
+        uniform float u_time;
+        uniform float u_scroll;
+        uniform float u_lightMode;
+        uniform sampler2D u_velocityField;
+
+        #define DOT_SCALE 0.120
+        #define PLUS_LEN 0.27
+        #define PLUS_WIDTH 0.06
+        #define SCROLL_PARALLAX 0.45
+        #define SMOOTH_SCALE 4.0
+        #define FLUID_DISPLACE 2.2
+        #define FLUID_BRIGHT 3.0
+        #define FLUID_SIZE_MAX 1.4
+
+        float hash21(vec2 p) {
+          p = fract(p * vec2(123.34, 456.21));
+          p += dot(p, p + 45.32);
+          return fract(p.x * p.y);
+        }
+        float valueNoise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          float a = hash21(i);
+          float b = hash21(i + vec2(1.0, 0.0));
+          float c = hash21(i + vec2(0.0, 1.0));
+          float d = hash21(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+        }
+
+        void main() {
+          vec2 uv = v_uv;
+          float aspect = u_resolution.x / u_resolution.y;
+
+          // Sample fluid field. Fluid texture is y-up (splat writes y-up),
+          // pattern's v_uv is [0,1] bottom-up already, but DOM renders top-down;
+          // we should not flip if our splat-side coords are also from bottom-up,
+          // which they are (cursorSimY = (mouseY / canvas.h) * simH, where mouseY
+          // is (innerHeight - clientY) * dpr = y-up already). So uv is already aligned.
+          vec2 fluid = texture(u_velocityField, uv).rg;
+          float fluidMag = length(fluid);
+
+          vec2 gridUv = uv;
+          gridUv.x *= aspect;
+          gridUv.y -= u_scroll * SCROLL_PARALLAX;
+          gridUv *= DOT_SCALE * u_resolution.y;
+          gridUv += fluid * FLUID_DISPLACE;
+
+          vec2 cellId = floor(gridUv);
+          vec2 cellFrac = fract(gridUv) - 0.5;
+
+          vec2 jitter = vec2(hash21(cellId), hash21(cellId + 17.13)) - 0.5;
+          jitter *= 0.55;
+          cellFrac -= jitter;
+
+          float sizeMul = 1.0 + min(fluidMag * 1.5, FLUID_SIZE_MAX);
+          float plusLen = PLUS_LEN * sizeMul;
+          float plusWidth = PLUS_WIDTH * sizeMul;
+
+          float dx = abs(cellFrac.x);
+          float dy = abs(cellFrac.y);
+          float barH = smoothstep(plusLen, plusLen - 0.02, dx) *
+                      smoothstep(plusWidth, plusWidth - 0.01, dy);
+          float barV = smoothstep(plusLen, plusLen - 0.02, dy) *
+                      smoothstep(plusWidth, plusWidth - 0.01, dx);
+          float dashMask = max(barH, barV);
+
+          float b = valueNoise(cellId / SMOOTH_SCALE);
+          float dotBrightness = pow(b, 0.55);
+          float intensity = dashMask * dotBrightness * 0.132;
+
+          intensity += dashMask * fluidMag * FLUID_BRIGHT;
+
+          vec3 col = mix(vec3(intensity), vec3(1.0 - intensity), u_lightMode);
+          fragColor = vec4(col, 1.0);
+        }
+      `;
+
+      const fluidFragSrc300 = `#version 300 es
+        precision highp float;
+        in vec2 v_uv;
+        out vec4 fragColor;
+        uniform sampler2D u_previous;
+        uniform vec2 u_resolution;
+        uniform vec2 u_cursor;
+        uniform vec2 u_vector;
+        uniform float u_delta;
+        uniform float u_strength;
+        uniform float u_radius;
+
+        void main() {
+          vec2 uv = v_uv;
+          vec2 vel = texture(u_previous, uv).rg;
+          vel *= (1.0 - min(0.5, u_delta / 400.0));
+          vec2 cursor = u_cursor / u_resolution;
+          vec2 correction = cursor - uv;
+          correction.x *= u_resolution.x / u_resolution.y;
+          float mouse_pct = length(correction);
+          float influence = exp(-mouse_pct * mouse_pct / (u_radius * u_radius));
+          vel += influence * u_vector * u_strength;
+          fragColor = vec4(vel, 0.0, 1.0);
+        }
+      `;
+
+      // ============================================================
+      // Helpers
+      // ============================================================
+      const compileShader = (type: number, src: string) => {
+        const shader = gl.createShader(type)!;
+        gl.shaderSource(shader, src);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          console.error("[bg] shader compile error:", gl.getShaderInfoLog(shader));
+          gl.deleteShader(shader);
+          return null;
+        }
+        return shader;
+      };
+
+      const linkProgram = (vert: WebGLShader, frag: WebGLShader) => {
+        const program = gl.createProgram()!;
+        gl.attachShader(program, vert);
+        gl.attachShader(program, frag);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          console.error("[bg] program link error:", gl.getProgramInfoLog(program));
+          return null;
+        }
+        return program;
+      };
+
+      const quadBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+
+      // ============================================================
+      // Build programs depending on fluid state
+      // ============================================================
+      const vertSrc = fluidEnabled ? vertSrc300 : vertSrc100;
+      const patternSrc = fluidEnabled ? patternFragSrc300 : patternFragSrc100;
+
+      const vert = compileShader(gl.VERTEX_SHADER, vertSrc);
+      const patternFrag = compileShader(gl.FRAGMENT_SHADER, patternSrc);
+      if (!vert || !patternFrag) {
+        console.error("[bg] pattern shader init failed");
+        canvas.style.background = document.documentElement.dataset.theme === "light" ? "#f6f6f4" : "#000000";
+      } else {
+        const patternProgram = linkProgram(vert, patternFrag);
+        if (!patternProgram) {
+          canvas.style.background = document.documentElement.dataset.theme === "light" ? "#f6f6f4" : "#000000";
+        } else {
+          gl.useProgram(patternProgram);
+
+          let posLoc = gl.getAttribLocation(patternProgram, "a_position");
+          gl.enableVertexAttribArray(posLoc);
+          gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+          const uRes = gl.getUniformLocation(patternProgram, "u_resolution");
+          const uTime = gl.getUniformLocation(patternProgram, "u_time");
+          const uScroll = gl.getUniformLocation(patternProgram, "u_scroll");
+          const uLightMode = gl.getUniformLocation(patternProgram, "u_lightMode");
+          const uVelField = fluidEnabled
+            ? gl.getUniformLocation(patternProgram, "u_velocityField")
+            : null;
+
+          // ---- Fluid program (only if enabled) ----
+          let fluidProgram: WebGLProgram | null = null;
+          let fPosLoc = -1;
+          let fU_previous: WebGLUniformLocation | null = null;
+          let fU_resolution: WebGLUniformLocation | null = null;
+          let fU_cursor: WebGLUniformLocation | null = null;
+          let fU_vector: WebGLUniformLocation | null = null;
+          let fU_delta: WebGLUniformLocation | null = null;
+          let fU_strength: WebGLUniformLocation | null = null;
+          let fU_radius: WebGLUniformLocation | null = null;
+
+          if (fluidEnabled) {
+            const fFrag = compileShader(gl.FRAGMENT_SHADER, fluidFragSrc300);
+            if (fFrag) {
+              const prog = linkProgram(vert, fFrag);
+              if (prog) {
+                fluidProgram = prog;
+                fPosLoc = gl.getAttribLocation(fluidProgram, "a_position");
+                fU_previous = gl.getUniformLocation(fluidProgram, "u_previous");
+                fU_resolution = gl.getUniformLocation(fluidProgram, "u_resolution");
+                fU_cursor = gl.getUniformLocation(fluidProgram, "u_cursor");
+                fU_vector = gl.getUniformLocation(fluidProgram, "u_vector");
+                fU_delta = gl.getUniformLocation(fluidProgram, "u_delta");
+                fU_strength = gl.getUniformLocation(fluidProgram, "u_strength");
+                fU_radius = gl.getUniformLocation(fluidProgram, "u_radius");
+              } else {
+                console.error("[bg] fluid program link failed — disabling fluid");
+                fluidEnabled = false;
+              }
+            } else {
+              console.error("[bg] fluid frag compile failed — disabling fluid");
+              fluidEnabled = false;
+            }
+          }
+
+          // ---- Fluid ping-pong textures (when enabled) ----
+          let fluidTexA: WebGLTexture | null = null;
+          let fluidTexB: WebGLTexture | null = null;
+          let fluidFboA: WebGLFramebuffer | null = null;
+          let fluidFboB: WebGLFramebuffer | null = null;
+          let curTex: WebGLTexture | null = null;
+          let curFbo: WebGLFramebuffer | null = null;
+          let otherTex: WebGLTexture | null = null;
+          let otherFbo: WebGLFramebuffer | null = null;
+          let simW = 0;
+          let simH = 0;
+
+          const CURSOR_SCALE = 36;
+
+          const createFluidTextures = () => {
+            if (!fluidEnabled) return;
+            const g = gl as WebGL2RenderingContext;
+            const internal = g.RGBA16F;
+            for (const which of [0, 1]) {
+              const tex = g.createTexture();
+              const fbo = g.createFramebuffer();
+              g.bindTexture(g.TEXTURE_2D, tex);
+              g.texImage2D(g.TEXTURE_2D, 0, internal, simW, simH, 0, g.RGBA, g.HALF_FLOAT, null);
+              g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MIN_FILTER, g.LINEAR);
+              g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MAG_FILTER, g.LINEAR);
+              g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE);
+              g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE);
+              g.bindFramebuffer(g.FRAMEBUFFER, fbo);
+              g.framebufferTexture2D(g.FRAMEBUFFER, g.COLOR_ATTACHMENT0, g.TEXTURE_2D, tex, 0);
+              g.clearColor(0, 0, 0, 0);
+              g.clear(g.COLOR_BUFFER_BIT);
+              if (which === 0) { fluidTexA = tex; fluidFboA = fbo; }
+              else { fluidTexB = tex; fluidFboB = fbo; }
+            }
+            g.bindFramebuffer(g.FRAMEBUFFER, null);
+            curTex = fluidTexA; curFbo = fluidFboA;
+            otherTex = fluidTexB; otherFbo = fluidFboB;
+          };
+
+          // ---- State ----
+          let dpr = Math.min(window.devicePixelRatio || 1, 2);
+          let mouseX = (window.innerWidth / 2) * dpr;
+          let mouseY = (window.innerHeight / 2) * dpr;
+          let cursorSimX = 0;
+          let cursorSimY = 0;
+          let lastCursorSimX = 0;
+          let lastCursorSimY = 0;
+          let lastMoveTime = 0;
+          let lastFluidTime = 0;
+          let scrollTarget = 0;
+          let scrollSmooth = 0;
+
+          const resize = () => {
+            dpr = Math.min(window.devicePixelRatio || 1, 2);
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            canvas.width = w * dpr;
+            canvas.height = h * dpr;
+            canvas.style.width = w + "px";
+            canvas.style.height = h + "px";
+            gl.viewport(0, 0, canvas.width, canvas.height);
+
+            if (fluidEnabled) {
+              simW = Math.max(1, Math.ceil(canvas.width / CURSOR_SCALE));
+              simH = Math.max(1, Math.ceil(canvas.height / CURSOR_SCALE));
+              if (fluidTexA) gl.deleteTexture(fluidTexA);
+              if (fluidTexB) gl.deleteTexture(fluidTexB);
+              if (fluidFboA) gl.deleteFramebuffer(fluidFboA);
+              if (fluidFboB) gl.deleteFramebuffer(fluidFboB);
+              fluidTexA = fluidTexB = null;
+              fluidFboA = fluidFboB = null;
+              createFluidTextures();
+              cursorSimX = simW / 2;
+              cursorSimY = simH / 2;
+              lastCursorSimX = cursorSimX;
+              lastCursorSimY = cursorSimY;
+            }
+          };
+
+          resize();
+          window.addEventListener("resize", resize);
+
+          document.addEventListener("mousemove", (e) => {
+            mouseX = e.clientX * dpr;
+            mouseY = (window.innerHeight - e.clientY) * dpr;
+            if (fluidEnabled) {
+              cursorSimX = (mouseX / canvas.width) * simW;
+              cursorSimY = (mouseY / canvas.height) * simH;
+            }
+            lastMoveTime = performance.now();
+          });
+
+          const updateScroll = () => {
+            const doc = document.documentElement;
+            const maxScroll = Math.max(1, doc.scrollHeight - window.innerHeight);
+            scrollTarget = window.scrollY / maxScroll;
+          };
+          updateScroll();
+          window.addEventListener("scroll", updateScroll, { passive: true });
+
+          // ---- Render loop ----
+          const render = (time: number) => {
+            scrollSmooth += (scrollTarget - scrollSmooth) * 0.08;
+
+            // Fluid step
+            if (fluidEnabled && fluidProgram) {
+              const now = performance.now();
+              const sinceMove = now - lastMoveTime;
+              if (sinceMove < 3500) {
+                const delta = Math.min(50, now - (lastFluidTime || now - 16));
+                lastFluidTime = now;
+
+                const vx = cursorSimX - lastCursorSimX;
+                const vy = cursorSimY - lastCursorSimY;
+                lastCursorSimX = cursorSimX;
+                lastCursorSimY = cursorSimY;
+
+                const g = gl as WebGL2RenderingContext;
+                g.useProgram(fluidProgram);
+                g.bindBuffer(g.ARRAY_BUFFER, quadBuffer);
+                g.enableVertexAttribArray(fPosLoc);
+                g.vertexAttribPointer(fPosLoc, 2, g.FLOAT, false, 0, 0);
+
+                g.activeTexture(g.TEXTURE0);
+                g.bindTexture(g.TEXTURE_2D, curTex);
+                g.uniform1i(fU_previous!, 0);
+
+                g.bindFramebuffer(g.FRAMEBUFFER, otherFbo);
+                g.viewport(0, 0, simW, simH);
+
+                g.uniform2f(fU_resolution!, simW, simH);
+                g.uniform2f(fU_cursor!, cursorSimX, cursorSimY);
+                g.uniform2f(fU_vector!, vx, vy);
+                g.uniform1f(fU_delta!, delta);
+                g.uniform1f(fU_strength!, 0.12);
+                g.uniform1f(fU_radius!, 0.06);
+
+                g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
+
+                // ping-pong swap
+                const tmpFbo = curFbo;
+                const tmpTex = curTex;
+                curFbo = otherFbo;
+                curTex = otherTex;
+                otherFbo = tmpFbo;
+                otherTex = tmpTex;
+              } else {
+                lastFluidTime = 0;
+              }
+            }
+
+            // Pattern draw
+            gl.useProgram(patternProgram);
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+            gl.enableVertexAttribArray(posLoc);
+            gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.viewport(0, 0, canvas.width, canvas.height);
+
+            gl.uniform2f(uRes, canvas.width, canvas.height);
+            gl.uniform1f(uTime, time * 0.001);
+            gl.uniform1f(uScroll, scrollSmooth);
+            gl.uniform1f(uLightMode, document.documentElement.dataset.theme === "light" ? 1 : 0);
+
+            if (fluidEnabled && uVelField && curTex) {
+              const g = gl as WebGL2RenderingContext;
+              g.activeTexture(g.TEXTURE1);
+              g.bindTexture(g.TEXTURE_2D, curTex);
+              g.uniform1i(uVelField, 1);
+            }
+
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            if (!reduceMotion) {
+              requestAnimationFrame(render);
+            }
+          };
+
+          if (reduceMotion) {
+            gl.useProgram(patternProgram);
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+            gl.enableVertexAttribArray(posLoc);
+            gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.uniform2f(uRes, canvas.width, canvas.height);
+            gl.uniform1f(uTime, 0);
+            gl.uniform1f(uScroll, 0);
+            gl.uniform1f(uLightMode, document.documentElement.dataset.theme === "light" ? 1 : 0);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+          } else {
+            requestAnimationFrame(render);
+          }
+        }
+      }
+    }
+  }
+</script>

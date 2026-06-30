@@ -1,0 +1,131 @@
+---
+import { getEntry } from "astro:content";
+const profileEntry = await getEntry("profile", "profile");
+const profile = profileEntry!.data;
+---
+
+<section class="section contact" id="contact">
+  <div class="container">
+    <span class="label fade-in">[ 04 ] contact</span>
+    <h2 class="contact-heading display fade-in">
+      let's make<br />something.
+    </h2>
+
+    <div class="contact-links fade-in">
+      <a href={`mailto:${profile.email}`} class="contact-link" data-cursor="email">
+        <span class="label">email</span>
+        <span class="contact-link-value">{profile.email}</span>
+      </a>
+      <a href={`tel:${profile.phone.replace(/\s/g, "")}`} class="contact-link" data-cursor="call">
+        <span class="label">phone</span>
+        <span class="contact-link-value">{profile.phone}</span>
+      </a>
+      {profile.socials.map((social) => (
+        <a
+          href={social.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="contact-link"
+          data-cursor="open"
+        >
+          <span class="label">{social.label}</span>
+          <span class="contact-link-value">{social.handle}</span>
+        </a>
+      ))}
+    </div>
+
+    <a href={profile.cv} download class="cv-btn fade-in" data-cursor="download">
+      <span>download cv</span>
+      <span class="mono">↓</span>
+    </a>
+
+    <footer class="contact-footer mono fade-in">
+      <span>© {new Date().getFullYear()} {profile.name}</span>
+      <span>{profile.location}</span>
+    </footer>
+  </div>
+</section>
+
+<style>
+  .contact {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+  }
+
+  .contact-heading {
+    font-size: clamp(3rem, 12vw, 10rem);
+    font-weight: 200;
+    letter-spacing: -0.06em;
+    line-height: 0.9;
+    margin: 1.5rem 0 3rem;
+  }
+
+  .contact-links {
+    display: flex;
+    gap: 3rem;
+    flex-wrap: wrap;
+  }
+
+  .contact-link {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--line-bright);
+    padding-bottom: 0.75rem;
+    transition: border-color 0.3s var(--ease);
+  }
+
+  .contact-link:hover {
+    border-bottom-color: var(--text);
+  }
+
+  .contact-link-value {
+    font-size: clamp(1.1rem, 2.5vw, 1.75rem);
+    font-weight: 300;
+    letter-spacing: -0.02em;
+  }
+
+  .cv-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 3rem;
+    padding: 0.7rem 1.4rem;
+    border: 1px solid var(--line-bright);
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text);
+    transition: background 0.3s var(--ease), color 0.3s var(--ease),
+      border-color 0.3s var(--ease);
+  }
+
+  .cv-btn:hover {
+    background: var(--text);
+    color: var(--bg);
+    border-color: var(--text);
+  }
+
+  .contact-footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 5rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--line);
+    color: var(--text-dim);
+  }
+
+  @media (max-width: 600px) {
+    .contact-links {
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .contact-footer {
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+  }
+</style>

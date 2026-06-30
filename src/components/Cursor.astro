@@ -1,0 +1,111 @@
+---
+---
+
+<div class="cursor-label" id="cursor-label" aria-hidden="true">
+  <span class="cursor-label-text" id="cursor-label-text"></span>
+</div>
+
+<style>
+  .cursor-label {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0;
+    will-change: transform, opacity;
+  }
+
+  .cursor-label-text {
+    display: inline-block;
+    font-family: "JetBrains Mono", "SF Mono", monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.05em;
+    color: var(--text);
+    background: var(--bg-alt);
+    border: 1px solid var(--line-bright);
+    padding: 0.35rem 0.65rem;
+    border-radius: 2px;
+    white-space: nowrap;
+    text-transform: uppercase;
+    transform: translate(-50%, -130%);
+    transition: background 0.5s var(--ease), color 0.5s var(--ease),
+      border-color 0.5s var(--ease);
+  }
+
+  @media (hover: none) {
+    .cursor-label {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  import gsap from "gsap";
+
+  const label = document.getElementById("cursor-label");
+  const labelText = document.getElementById("cursor-label-text");
+
+  if (label && labelText) {
+    // GSAP quickTo per axis — single eased retarget on every mousemove.
+    // Matches lamalama's class `uv`: expo.out, 0.45s tail.
+    const xTo = gsap.quickTo(label, "x", { ease: "expo.out", duration: 0.45 });
+    const yTo = gsap.quickTo(label, "y", { ease: "expo.out", duration: 0.45 });
+
+    document.addEventListener("mousemove", (e) => {
+      xTo(e.clientX);
+      yTo(e.clientY);
+    });
+
+    let hoverTl: gsap.core.Timeline | null = null;
+
+    const showLabel = () => {
+      hoverTl?.kill();
+      hoverTl = gsap.timeline();
+      hoverTl.to(label, { opacity: 1, ease: "power4.out", duration: 0.05 }, 0);
+    };
+
+    const hideLabel = () => {
+      hoverTl?.kill();
+      hoverTl = gsap.timeline();
+      hoverTl.to(label, { opacity: 0, ease: "power4.out", duration: 0.25, delay: 0.35 }, 0);
+    };
+
+    const attachHover = () => {
+      const hoverables = document.querySelectorAll<HTMLElement>(
+        "a, button, [data-cursor], .work-item, .toggle-btn, .experience-item, .section-nav-item"
+      );
+
+      hoverables.forEach((el) => {
+        if (el.dataset.cursorAttached) return;
+        el.dataset.cursorAttached = "true";
+
+        el.addEventListener("mouseenter", () => {
+          const customLabel = el.dataset.cursor;
+          if (customLabel) {
+            labelText.textContent = customLabel;
+          } else if (el.classList.contains("work-item")) {
+            labelText.textContent = el.dataset.video ? "play" : "view";
+          } else if (el.tagName === "A" || el.tagName === "BUTTON") {
+            labelText.textContent = "open";
+          } else {
+            labelText.textContent = "";
+          }
+
+          if (labelText.textContent) {
+            showLabel();
+          }
+        });
+
+        el.addEventListener("mouseleave", () => {
+          hideLabel();
+        });
+      });
+    };
+
+    attachHover();
+
+    const observer = new MutationObserver(() => attachHover());
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+</script>

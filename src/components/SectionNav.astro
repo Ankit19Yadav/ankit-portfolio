@@ -1,0 +1,99 @@
+---
+const sections = [
+  { id: "intro", label: "01", name: "intro" },
+  { id: "work", label: "02", name: "work" },
+  { id: "experience", label: "03", name: "experience" },
+  { id: "contact", label: "04", name: "contact" },
+];
+---
+
+<nav class="section-nav" id="section-nav">
+  {sections.map((s) => (
+    <a href={`#${s.id}`} class="section-nav-item" data-target={s.id} data-cursor="↑">
+      <span class="section-nav-num mono">{s.label}</span>
+      <span class="section-nav-name mono">{s.name}</span>
+    </a>
+  ))}
+</nav>
+
+<style>
+  .section-nav {
+    position: fixed;
+    left: var(--pad);
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .section-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    opacity: 0.55;
+    transition: opacity 0.3s var(--ease);
+  }
+
+  .section-nav-item:hover,
+  .section-nav-item.active {
+    opacity: 1;
+  }
+
+  .section-nav-num {
+    color: var(--text);
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+
+  .section-nav-name {
+    color: var(--text-mid);
+    font-size: 0.75rem;
+    max-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    transition: max-width 0.4s var(--ease), color 0.3s var(--ease);
+  }
+
+  .section-nav-item:hover .section-nav-name,
+  .section-nav-item.active .section-nav-name {
+    max-width: 120px;
+    color: var(--text);
+  }
+
+  .section-nav-item.active .section-nav-num {
+    color: var(--text);
+  }
+
+  .section-nav-item:not(.active) .section-nav-num {
+    color: var(--text-dim);
+  }
+
+  @media (max-width: 700px) {
+    .section-nav {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  const items = document.querySelectorAll<HTMLElement>(".section-nav-item");
+  const sections = document.querySelectorAll<HTMLElement>("section[id]");
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          items.forEach((item) => {
+            item.classList.toggle("active", item.dataset.target === id);
+          });
+        }
+      });
+    },
+    { threshold: 0.5 }
+  );
+
+  sections.forEach((s) => observer.observe(s));
+</script>

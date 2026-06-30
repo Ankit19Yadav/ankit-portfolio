@@ -1,0 +1,157 @@
+---
+import { getCollection, getEntry } from "astro:content";
+
+const profileEntry = await getEntry("profile", "profile");
+const profile = profileEntry!.data;
+
+const experienceEntries = await getCollection("experience");
+experienceEntries.sort((a, b) => (a.data.order ?? 0) - (b.data.order ?? 0));
+const experience = experienceEntries.map((e) => ({
+  id: e.id,
+  period: e.data.period,
+  role: e.data.role,
+  company: e.data.company,
+  location: e.data.location,
+  bullets: e.data.bullets,
+}));
+---
+
+<section class="section" id="experience">
+  <div class="container">
+    <div class="exp-header">
+      <span class="label fade-in">[ 03 ] experience</span>
+    </div>
+
+    <div class="exp-list">
+      {experience.map((item, i) => (
+        <div class="experience-item fade-in">
+          <span class="exp-index mono">{String(i + 1).padStart(2, "0")}</span>
+          <div class="exp-col-period">
+            {item.period && <span class="exp-period mono">{item.period}</span>}
+          </div>
+          <div class="exp-col-details">
+            <div class="exp-details">
+              <span class="exp-role">{item.role}</span>
+              <span class="exp-company mono">{item.company} — {item.location}</span>
+            </div>
+            <ul class="exp-bullets">
+              {item.bullets.map((bullet) => (
+                <li class="exp-bullet">{bullet}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <div class="exp-skills fade-in">
+      <span class="label">[ toolkit ]</span>
+      <p class="skills-text">{profile.skills.join(" / ")}</p>
+    </div>
+  </div>
+</section>
+
+<style>
+  .exp-header {
+    margin-bottom: 3rem;
+  }
+
+  .exp-list {
+    border-top: 1px solid var(--line);
+  }
+
+  .experience-item {
+    display: grid;
+    grid-template-columns: 3rem 10rem 1fr;
+    gap: 2rem;
+    align-items: start;
+    padding: 2.5rem 0;
+    border-bottom: 1px solid var(--line);
+    transition: padding-left 0.4s var(--ease);
+  }
+
+  .experience-item:hover {
+    padding-left: 1rem;
+  }
+
+  .exp-index {
+    color: var(--text-dim);
+  }
+
+  .exp-col-period {
+    padding-top: 0.3rem;
+  }
+
+  .exp-period {
+    color: var(--text-mid);
+  }
+
+  .exp-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .exp-role {
+    font-size: clamp(1.25rem, 2vw, 1.75rem);
+    font-weight: 300;
+    letter-spacing: -0.02em;
+  }
+
+  .exp-company {
+    color: var(--text-dim);
+  }
+
+  .exp-bullets {
+    list-style: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .exp-bullet {
+    font-size: 0.85rem;
+    color: var(--text-mid);
+    line-height: 1.6;
+    padding-left: 1.25rem;
+    position: relative;
+  }
+
+  .exp-bullet::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+    color: var(--text-dim);
+  }
+
+  .exp-skills {
+    margin-top: 4rem;
+  }
+
+  .skills-text {
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    color: var(--text-mid);
+    margin-top: 1.5rem;
+    letter-spacing: 0.02em;
+    line-height: 1.8;
+  }
+
+  @media (max-width: 900px) {
+    .experience-item {
+      grid-template-columns: 2rem 1fr;
+      gap: 0.5rem 1rem;
+    }
+    .exp-col-period {
+      grid-column: 2;
+    }
+    .exp-col-details {
+      grid-column: 2;
+    }
+    .experience-item:hover {
+      padding-left: 0.5rem;
+    }
+  }
+</style>

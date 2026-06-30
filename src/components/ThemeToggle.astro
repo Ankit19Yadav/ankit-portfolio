@@ -1,0 +1,102 @@
+---
+---
+
+<button
+  class="theme-toggle"
+  id="theme-toggle"
+  type="button"
+  aria-label="Toggle light/dark mode"
+  data-cursor="theme"
+>
+  <span class="theme-toggle-track">
+    <span class="theme-toggle-thumb" id="theme-toggle-thumb"></span>
+  </span>
+  <span class="theme-toggle-label mono" id="theme-toggle-label">dark</span>
+</button>
+
+<style>
+  .theme-toggle {
+    position: fixed;
+    right: var(--pad);
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem;
+    border: 1px solid var(--line-bright);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--text);
+    transition: border-color 0.3s var(--ease), background 0.5s var(--ease),
+      color 0.5s var(--ease);
+  }
+
+  .theme-toggle:hover {
+    border-color: var(--text);
+  }
+
+  .theme-toggle-track {
+    position: relative;
+    display: inline-block;
+    width: 34px;
+    height: 16px;
+    border-radius: 8px;
+    background: var(--line-bright);
+    transition: background 0.3s var(--ease);
+  }
+
+  .theme-toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--text);
+    transition: transform 0.35s var(--ease), background 0.5s var(--ease);
+  }
+
+  :global([data-theme="light"]) .theme-toggle-thumb {
+    transform: translateX(18px);
+  }
+
+  .theme-toggle-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-mid);
+    min-width: 2.5rem;
+    text-align: left;
+  }
+
+  @media (max-width: 700px) {
+    .theme-toggle {
+      right: 1rem;
+      top: auto;
+      bottom: 1rem;
+      transform: none;
+    }
+  }
+</style>
+
+<script>
+  const toggle = document.getElementById("theme-toggle");
+  const label = document.getElementById("theme-toggle-label");
+
+  const applyTheme = (theme: "light" | "dark") => {
+    document.documentElement.dataset.theme = theme;
+    if (label) label.textContent = theme;
+  };
+
+  const stored = localStorage.getItem("theme") as "light" | "dark" | null;
+  if (stored) applyTheme(stored);
+
+  toggle?.addEventListener("click", () => {
+    const current = document.documentElement.dataset.theme === "light" ? "light" : "dark";
+    const next = current === "light" ? "dark" : "light";
+    applyTheme(next);
+    localStorage.setItem("theme", next);
+  });
+</script>

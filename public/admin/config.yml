@@ -1,0 +1,122 @@
+backend:
+  name: git-gateway
+  branch: main
+  commit_messages:
+    create: "Create {{collection}} “{{slug}}”"
+    update: "Update {{collection}} “{{slug}}”"
+    delete: "Delete {{collection}} “{{slug}}”"
+    uploadMedia: "Upload media “{{path}}”"
+    deleteMedia: "Delete media “{{path}}”"
+
+# Media uploads land here (relative to project root). Drag-dropped files in
+# the admin UI are saved to this folder on commit.
+media_folder: "public/content/uploads"
+# Astro serves /public/* at site root, so the public path omits "public/".
+public_folder: "/content/uploads"
+
+# Use this to switch to GitHub OAuth (Netlify Identity can also use email magic-link)
+local_backend: true
+
+collections:
+  - name: "work"
+    label: "Work"
+    label_singular: "Work item"
+    description: "Graphic flyers and motion videos shown in the Work section."
+    folder: "src/content/work"
+    create: true
+    delete: true
+    slug: "{{slug}}"
+    extension: "md"
+    format: "frontmatter"
+    summary: "{{title}} — {{client}} ({{year}}, {{type}})"
+    fields:
+      - { name: "title", label: "Title", widget: "string" }
+      - { name: "client", label: "Client", widget: "string" }
+      - { name: "year", label: "Year", widget: "string", hint: "e.g. 2025" }
+      - name: "type"
+        label: "Type"
+        widget: "select"
+        options: ["graphic", "motion"]
+        default: ["graphic"]
+        hint: "graphic = static flyer; motion = video reel."
+      - name: "image"
+        label: "Poster image"
+        widget: "image"
+        hint: "Drag-drop to upload. Used as the card thumbnail (and lightbox image for graphic items)."
+      - name: "video"
+        label: "Video file (motion only)"
+        widget: "file"
+        required: false
+        hint: "Only required for motion pieces. Leave blank for graphic work."
+      - { name: "alt", label: "Alt text", widget: "string", hint: "Short description for screen readers." }
+      - name: "order"
+        label: "Order"
+        widget: "number"
+        required: false
+        default: 100
+        hint: "Smaller numbers appear first. Use to reorder items within their type."
+
+  - name: "experience"
+    label: "Experience"
+    label_singular: "Experience entry"
+    description: "Job entries shown in the Experience section."
+    folder: "src/content/experience"
+    create: true
+    delete: true
+    slug: "{{slug}}"
+    extension: "md"
+    format: "frontmatter"
+    summary: "{{role}} — {{company}}"
+    fields:
+      - { name: "period", label: "Period", widget: "string", required: false, hint: "e.g. “Nov 2023 — now”. Leave blank if not applicable." }
+      - { name: "role", label: "Role", widget: "string" }
+      - { name: "company", label: "Company", widget: "string" }
+      - { name: "location", label: "Location", widget: "string" }
+      - name: "bullets"
+        label: "Bullets"
+        widget: "list"
+        required: false
+        default: []
+        field: { name: "bullet", label: "Bullet", widget: "string" }
+        hint: "Each line becomes one bullet point under the role."
+      - name: "order"
+        label: "Order"
+        widget: "number"
+        required: false
+        default: 100
+        hint: "Smaller numbers appear first (top of the list)."
+
+  - name: "profile"
+    label: "Profile & Toolkit"
+    description: "Your name, tagline, contact info, socials, CV, and skill list."
+    files:
+      - name: "profile"
+        label: "Profile"
+        file: "src/content/profile.json"
+        format: "json"
+        fields:
+          - { name: "name", label: "Name", widget: "string" }
+          - { name: "tagline", label: "Tagline", widget: "text" }
+          - { name: "email", label: "Email", widget: "string" }
+          - { name: "phone", label: "Phone", widget: "string" }
+          - { name: "location", label: "Location", widget: "string" }
+          - name: "cv"
+            label: "CV PDF"
+            widget: "file"
+            hint: "Drag-drop your CV PDF here to replace it."
+          - name: "socials"
+            label: "Socials"
+            widget: "list"
+            required: false
+            default: []
+            fields:
+              - { name: "label", label: "Platform", widget: "string", hint: "e.g. LinkedIn" }
+              - { name: "handle", label: "Handle", widget: "string", hint: "e.g. ankit19yadav" }
+              - { name: "url", label: "Full URL", widget: "string", hint: "e.g. https://linkedin.com/in/ankit19yadav" }
+          - name: "skills"
+            label: "Toolkit / Skills"
+            widget: "list"
+            required: false
+            default: []
+            field: { name: "skill", label: "Skill", widget: "string" }
+            hint: "Shown at the bottom of the Experience section."

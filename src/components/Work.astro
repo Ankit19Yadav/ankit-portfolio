@@ -1,0 +1,545 @@
+---
+import { getCollection } from "astro:content";
+
+const allWork = await getCollection("work");
+allWork.sort((a, b) => (a.data.order ?? 0) - (b.data.order ?? 0));
+
+const graphicWork = allWork
+  .filter((w) => w.data.type === "graphic")
+  .map((w) => ({
+    id: w.id,
+    title: w.data.title,
+    client: w.data.client,
+    year: w.data.year,
+    type: w.data.type,
+    image: w.data.image,
+    video: w.data.video || "",
+    alt: w.data.alt,
+  }));
+
+const motionWork = allWork
+  .filter((w) => w.data.type === "motion")
+  .map((w) => ({
+    id: w.id,
+    title: w.data.title,
+    client: w.data.client,
+    year: w.data.year,
+    type: w.data.type,
+    image: w.data.image,
+    video: w.data.video || "",
+    alt: w.data.alt,
+  }));
+
+// Triple the items so we can safely centre on the 4th of 7 visible cards
+// while keeping the strip scrollable in both directions without ever
+// running out of duplicated content (smooth infinite loop).
+const graphicItems = [...graphicWork, ...graphicWork, ...graphicWork];
+const motionItems = [...motionWork, ...motionWork, ...motionWork];
+---
+
+<section class="section work-section" id="work">
+  <div class="container">
+    <div class="work-header">
+      <span class="label fade-in">[ 02 ] work</span>
+      <div class="work-toggle fade-in" id="work-toggle">
+        <button class="toggle-btn active" data-type="graphic">graphic</button>
+        <button class="toggle-btn" data-type="motion">motion</button>
+      </div>
+    </div>
+
+    <div class="work-strip-wrap fade-in">
+      <div class="work-strip" id="work-strip-graphic" data-type="graphic" data-base={graphicWork.length}>
+        {graphicItems.map((item) => (
+          <div
+            class="work-item"
+            data-type="graphic"
+            data-title={item.title}
+            data-image={item.image}
+            data-video=""
+          >
+            <div class="work-item-img">
+              <img src={item.image} alt={item.alt} loading="lazy" draggable="false" />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div class="work-strip hidden" id="work-strip-motion" data-type="motion" data-base={motionWork.length}>
+        {motionItems.map((item) => (
+          <div
+            class="work-item"
+            data-type="motion"
+            data-title={item.title}
+            data-image={item.image}
+            data-video={item.video || ""}
+          >
+            <div class="work-item-img">
+              <img src={item.image} alt={item.alt} loading="lazy" draggable="false" />
+              <span class="play-indicator mono">[ ▶ ]</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div class="work-footer fade-in">
+      <span class="mono" id="work-counter">[ 01 / {graphicWork.length} ]</span>
+      <span class="mono drag-hint">← drag / scroll →</span>
+    </div>
+  </div>
+</section>
+
+<!--
+  Lightbox lives OUTSIDE the .work-section so that the z-index: 10000
+  is evaluated at the document root level, not trapped inside the
+  .section { position: relative; z-index: 2 } stacking context that
+  the Work section creates. Otherwise sibling sections (Experience,
+  Contact) at the same z-index render on top of the fixed lightbox.
+-->
+<div class="lightbox" id="lightbox" aria-hidden="true">
+  <button class="lightbox-close mono" id="lightbox-close" aria-label="Close">[ ✕ ]</button>
+  <div class="lightbox-content" id="lightbox-content"></div>
+</div>
+
+<style>
+  .work-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 3rem;
+  }
+
+  .work-toggle {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--line-bright);
+    border-radius: var(--radius);
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+  }
+
+  .toggle-btn {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    padding: 0.5rem 1.1rem;
+    transition: color 0.3s var(--ease), background 0.3s var(--ease);
+  }
+
+  .toggle-btn + .toggle-btn {
+    border-left: 1px solid var(--line-bright);
+  }
+
+  .toggle-btn:hover:not(.active) {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  :global([data-theme="light"]) .toggle-btn:hover:not(.active) {
+    background: rgba(0, 0, 0, 0.05);
+  }
+
+  .toggle-btn.active {
+    background: var(--text);
+    color: var(--bg);
+  }
+
+  .work-strip-wrap {
+    overflow: hidden;
+    margin: 0 calc(-1 * var(--pad));
+    padding: 0 var(--pad);
+    perspective: 1200px;
+  }
+
+  .work-strip {
+    display: flex;
+    gap: clamp(1.25rem, 3vw, 2.75rem);
+    overflow-x: auto;
+    scroll-behavior: auto;
+    padding: 4rem 0;
+    scrollbar-width: none;
+    user-select: none;
+  }
+
+  .work-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .work-strip.hidden {
+    display: none;
+  }
+
+  .work-strip.dragging {
+    cursor: none;
+  }
+
+  .work-item {
+    flex: 0 0 auto;
+    width: clamp(130px, 13vw, 185px);
+    transform-origin: center center;
+    transition: transform 0.18s var(--ease), opacity 0.18s var(--ease), z-index 0s;
+    will-change: transform, opacity;
+  }
+
+  .work-item-img {
+    position: relative;
+    aspect-ratio: 9 / 16;
+    overflow: hidden;
+    background: var(--bg-alt);
+    border: 1px solid var(--line);
+  }
+
+  .work-item-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    filter: grayscale(100%) contrast(1.1);
+    transition: filter 0.5s var(--ease), transform 0.5s var(--ease);
+  }
+
+  .work-item:hover .work-item-img img,
+  .work-item.is-center .work-item-img img {
+    filter: grayscale(0%) contrast(1);
+  }
+
+  .work-item:hover .work-item-img img {
+    transform: scale(1.04);
+  }
+
+  .play-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--text);
+    font-size: 0.8rem;
+    opacity: 0;
+    transition: opacity 0.3s var(--ease);
+    text-shadow: 0 0 8px rgba(0, 0, 0, 0.8);
+  }
+
+  .work-item:hover .play-indicator {
+    opacity: 1;
+  }
+
+  .work-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1.5rem;
+    color: var(--text-dim);
+  }
+
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: #000000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--pad);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s var(--ease);
+  }
+
+  :global([data-theme="light"]) .lightbox {
+    background: #f6f6f4;
+  }
+
+  .lightbox.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .lightbox-close {
+    position: absolute;
+    top: 1.5rem;
+    right: 1.5rem;
+    font-size: 0.8rem;
+    color: var(--text-mid);
+    transition: color 0.3s var(--ease);
+  }
+
+  .lightbox-close:hover {
+    color: var(--text);
+  }
+
+  .lightbox-content {
+    max-width: 560px;
+    width: 100%;
+  }
+
+  .lightbox-content img,
+  .lightbox-content video {
+    width: 100%;
+    border: 1px solid var(--line-bright);
+  }
+
+  @media (max-width: 600px) {
+    .work-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 1rem;
+    }
+  }
+</style>
+
+<script>
+  const toggleBtns = document.querySelectorAll<HTMLButtonElement>(".toggle-btn");
+  const stripGraphic = document.getElementById("work-strip-graphic");
+  const stripMotion = document.getElementById("work-strip-motion");
+  const counter = document.getElementById("work-counter");
+
+  const strips: Record<string, HTMLElement | null> = {
+    graphic: stripGraphic,
+    motion: stripMotion,
+  };
+
+  const baseCounts: Record<string, number> = {
+    graphic: Number(stripGraphic?.dataset.base || 0),
+    motion: Number(stripMotion?.dataset.base || 0),
+  };
+
+  function getItems(strip: HTMLElement) {
+    return strip.querySelectorAll<HTMLElement>(".work-item");
+  }
+
+  function updatePerspective(strip: HTMLElement) {
+    if (!strip || strip.clientWidth === 0) return;
+    const center = strip.scrollLeft + strip.clientWidth / 2;
+    const half = strip.clientWidth / 2;
+    const items = getItems(strip);
+    let closestIdx = 0;
+    let closestDist = Infinity;
+
+    items.forEach((el, i) => {
+      const itemCenter = el.offsetLeft + el.offsetWidth / 2;
+      const dist = Math.abs(itemCenter - center);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestIdx = i;
+      }
+      const norm = Math.min(1, dist / half);
+      const scale = 1.5 - norm * 0.9;
+      const opacity = 1 - norm * 0.5;
+      el.style.transform = `scale(${scale.toFixed(3)})`;
+      el.style.opacity = opacity.toFixed(3);
+      el.style.zIndex = String(Math.round(scale * 10));
+      el.classList.toggle("is-center", i === closestIdx);
+    });
+  }
+
+  function updateCounter(strip: HTMLElement, base: number) {
+    if (!counter || base <= 0) return;
+    const center = strip.scrollLeft + strip.clientWidth / 2;
+    const items = getItems(strip);
+    if (!items.length) return;
+    let closest = 0;
+    let closestDist = Infinity;
+    items.forEach((el, i) => {
+      const itemCenter = el.offsetLeft + el.offsetWidth / 2;
+      const d = Math.abs(itemCenter - center);
+      if (d < closestDist) {
+        closestDist = d;
+        closest = i;
+      }
+    });
+    const display = (closest % base) + 1;
+    counter.textContent = `[ ${String(display).padStart(2, "0")} / ${base} ]`;
+  }
+
+  function getSetWidth(strip: HTMLElement, base: number): number {
+    const items = getItems(strip);
+    if (items.length < base || base <= 0) return 0;
+    const first = items[0];
+    const after = items[base];
+    return after.offsetLeft - first.offsetLeft;
+  }
+
+  function positionStart(strip: HTMLElement) {
+    if (!strip || strip.clientWidth === 0) return;
+    const base = baseCounts[strip.dataset.type || "graphic"] || 0;
+    const items = getItems(strip);
+    if (!items.length || base <= 0) return;
+    // Start the strip scrolled so the SECOND item of the middle set is centred.
+    // That guarantees a card on each side is visible (5-card perspective view).
+    const targetIdx = base + 1;
+    const target = items[targetIdx];
+    if (!target) return;
+    const targetCenter = target.offsetLeft + target.offsetWidth / 2;
+    strip.scrollLeft = targetCenter - strip.clientWidth / 2;
+    updatePerspective(strip);
+    updateCounter(strip, base);
+  }
+
+  function setupStrip(strip: HTMLElement) {
+    if (!strip || strip.dataset.ready === "true") return;
+    strip.dataset.ready = "true";
+    const base = baseCounts[strip.dataset.type || "graphic"] || 0;
+
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const sw = getSetWidth(strip, base);
+        if (sw > 0) {
+          if (strip.scrollLeft <= 0) {
+            strip.scrollLeft += sw;
+          } else if (strip.scrollLeft >= strip.scrollWidth - strip.clientWidth - 1) {
+            strip.scrollLeft -= sw;
+          }
+        }
+        updatePerspective(strip);
+        updateCounter(strip, base);
+      });
+    };
+    strip.addEventListener("scroll", onScroll, { passive: true });
+
+    // Snap-on-wheel: any wheel tick jumps a full card. Coalesces bursts so a
+    // single scroll gesture can advance multiple cards without waiting.
+    let snapLockUntil = 0;
+    let snapPending = 0;
+
+    const snapBy = (delta: number) => {
+      const items = getItems(strip);
+      if (!items.length) return;
+      const center = strip.scrollLeft + strip.clientWidth / 2;
+      let closestIdx = 0;
+      let closestDist = Infinity;
+      items.forEach((el, i) => {
+        const itemCenter = el.offsetLeft + el.offsetWidth / 2;
+        const d = Math.abs(itemCenter - center);
+        if (d < closestDist) {
+          closestDist = d;
+          closestIdx = i;
+        }
+      });
+      const targetIdx = Math.max(0, Math.min(items.length - 1, closestIdx + delta));
+      const target = items[targetIdx] as HTMLElement;
+      if (!target) return;
+      const targetCenter = target.offsetLeft + target.offsetWidth / 2;
+      strip.scrollTo({ left: targetCenter - strip.clientWidth / 2, behavior: "smooth" });
+    };
+
+    strip.addEventListener(
+      "wheel",
+      (e: WheelEvent) => {
+        e.preventDefault();
+        const now = performance.now();
+        const dir = e.deltaY > 0 ? 1 : -1;
+        if (now >= snapLockUntil) {
+          snapLockUntil = now + 220;
+          snapPending = dir;
+          snapBy(dir);
+        } else {
+          // Accumulate additional steps from continued scrolling within the lock
+          snapPending += dir;
+          // If user accumulated an extra full step, advance further
+          if (Math.abs(snapPending) >= 2) {
+            snapBy(Math.sign(snapPending));
+            snapPending = Math.sign(snapPending);
+          }
+        }
+      },
+      { passive: false }
+    );
+
+    let isDown = false;
+    let startX = 0;
+    let scrollLeft = 0;
+    strip.addEventListener("mousedown", (e) => {
+      isDown = true;
+      strip.classList.add("dragging");
+      startX = e.pageX - strip.offsetLeft;
+      scrollLeft = strip.scrollLeft;
+    });
+    strip.addEventListener("mouseleave", () => {
+      isDown = false;
+      strip.classList.remove("dragging");
+    });
+    strip.addEventListener("mouseup", () => {
+      isDown = false;
+      strip.classList.remove("dragging");
+    });
+    strip.addEventListener("mousemove", (e) => {
+      if (!isDown) return;
+      e.preventDefault();
+      const x = e.pageX - strip.offsetLeft;
+      const walk = (x - startX) * 1.5;
+      strip.scrollLeft = scrollLeft - walk;
+    });
+  }
+
+  [stripGraphic, stripMotion].forEach((s) => {
+    if (s) setupStrip(s);
+  });
+
+  requestAnimationFrame(() => {
+    if (stripGraphic) positionStart(stripGraphic);
+  });
+
+  toggleBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const type = btn.dataset.type;
+      if (!type) return;
+      toggleBtns.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+
+      Object.entries(strips).forEach(([t, strip]) => {
+        if (strip) strip.classList.toggle("hidden", t !== type);
+      });
+
+      const shown = strips[type];
+      if (shown) {
+        requestAnimationFrame(() => positionStart(shown));
+      }
+    });
+  });
+
+  const lightbox = document.getElementById("lightbox");
+  const lightboxContent = document.getElementById("lightbox-content");
+  const lightboxClose = document.getElementById("lightbox-close");
+
+  document.querySelectorAll<HTMLElement>(".work-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      const strip = item.closest(".work-strip");
+      if (strip?.classList.contains("dragging")) return;
+      if (!lightbox || !lightboxContent) return;
+
+      const image = item.dataset.image;
+      const video = item.dataset.video;
+
+      if (video) {
+        lightboxContent.innerHTML = `<video src="${video}" controls autoplay playsinline></video>`;
+      } else {
+        lightboxContent.innerHTML = `<img src="${image}" alt="" />`;
+      }
+
+      lightbox.classList.add("open");
+      lightbox.setAttribute("aria-hidden", "false");
+      document.body.style.overflow = "hidden";
+    });
+  });
+
+  const closeLightbox = () => {
+    if (!lightbox) return;
+    lightbox.classList.remove("open");
+    lightbox.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    if (lightboxContent) lightboxContent.innerHTML = "";
+  };
+
+  lightboxClose?.addEventListener("click", closeLightbox);
+  lightbox?.addEventListener("click", (e) => {
+    if (e.target === lightbox) closeLightbox();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeLightbox();
+  });
+</script>

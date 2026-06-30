@@ -1,0 +1,24 @@
+{
+  "profile": {
+    "name": "Ankit Yadav",
+    "tagline": "Visual & motion designer crafting high-impact marketing campaigns, motion graphics, and video assets for hospitality, real estate, and consumer brands.",
+    "email": "ankit.gacc@gmail.com",
+    "phone": "+91 7017526881",
+    "location": "Chandigarh, India",
+    "cv": "/cv/Ankit-Yadav-CV.pdf",
+    "socials": [
+      {
+        "label": "LinkedIn",
+        "handle": "ankit19yadav",
+        "url": "https://linkedin.com/in/ankit19yadav"
+      }
+    ],
+    "skills": [
+      "After Effects",
+      "Photoshop",
+      "Premiere Pro",
+      "Figma",
+      "Illustrator"
+    ]
+  }
+}
