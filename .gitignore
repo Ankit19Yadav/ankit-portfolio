@@ -32,3 +32,6 @@ Thumbs.db
 .vscode/
 
 git-push-*.log
+
+# Video originals backup
+public/content/uploads/reel/_originals/

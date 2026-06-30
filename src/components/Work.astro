@@ -516,7 +516,7 @@ const motionItems = [...motionWork, ...motionWork, ...motionWork];
       const video = item.dataset.video;
 
       if (video) {
-        lightboxContent.innerHTML = `<video src="${video}" controls autoplay playsinline></video>`;
+        lightboxContent.innerHTML = `<video src="${video}" controls autoplay playsinline preload="metadata" poster="${image}"></video>`;
       } else {
         lightboxContent.innerHTML = `<img src="${image}" alt="" />`;
       }
