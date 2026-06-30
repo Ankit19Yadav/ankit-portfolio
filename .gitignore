@@ -35,3 +35,5 @@ git-push-*.log
 
 # Video originals backup
 public/content/uploads/reel/_originals/
+
+public/content/uploads/flyers/_originals/
