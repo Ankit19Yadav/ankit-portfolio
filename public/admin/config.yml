@@ -14,9 +14,6 @@ media_folder: "public/content/uploads"
 # Astro serves /public/* at site root, so the public path omits "public/".
 public_folder: "/content/uploads"
 
-# Use this to switch to GitHub OAuth (Netlify Identity can also use email magic-link)
-local_backend: true
-
 collections:
   - name: "work"
     label: "Work"
